@@ -248,13 +248,13 @@ class ROUTER_equity_estimates(Container):
         symbol: Annotated[
             Union[str, None, List[Optional[str]]],
             OpenBBField(
-                description="Symbol to get data for. Multiple comma separated items allowed for provider(s): fmp, intrinio, yfinance."
+                description="Symbol to get data for. Multiple comma separated items allowed for provider(s): fmp, intrinio, tmx, yfinance."
             ),
         ] = None,
         provider: Annotated[
-            Optional[Literal["fmp", "intrinio", "yfinance"]],
+            Optional[Literal["fmp", "intrinio", "tmx", "yfinance"]],
             OpenBBField(
-                description="The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: fmp, intrinio, yfinance."
+                description="The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: fmp, intrinio, tmx, yfinance."
             ),
         ] = None,
         **kwargs
@@ -264,9 +264,9 @@ class ROUTER_equity_estimates(Container):
         Parameters
         ----------
         symbol : Union[str, None, List[Optional[str]]]
-            Symbol to get data for. Multiple comma separated items allowed for provider(s): fmp, intrinio, yfinance.
-        provider : Optional[Literal['fmp', 'intrinio', 'yfinance']]
-            The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: fmp, intrinio, yfinance.
+            Symbol to get data for. Multiple comma separated items allowed for provider(s): fmp, intrinio, tmx, yfinance.
+        provider : Optional[Literal['fmp', 'intrinio', 'tmx', 'yfinance']]
+            The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: fmp, intrinio, tmx, yfinance.
         industry_group_number : Optional[int]
             The Zacks industry group number. (provider: intrinio)
 
@@ -275,7 +275,7 @@ class ROUTER_equity_estimates(Container):
         OBBject
             results : List[PriceTargetConsensus]
                 Serializable results.
-            provider : Optional[Literal['fmp', 'intrinio', 'yfinance']]
+            provider : Optional[Literal['fmp', 'intrinio', 'tmx', 'yfinance']]
                 Provider name.
             warnings : Optional[List[Warning_]]
                 List of warnings.
@@ -310,6 +310,18 @@ class ROUTER_equity_estimates(Container):
             The date of the most recent estimate. (provider: intrinio)
         industry_group_number : Optional[int]
             The Zacks industry group number. (provider: intrinio)
+        target_upside : Optional[float]
+            Percent of upside, as a normalized percent. (provider: tmx)
+        total_analysts : Optional[int]
+            Total number of analyst. (provider: tmx)
+        buy_ratings : Optional[int]
+            Number of buy ratings. (provider: tmx)
+        sell_ratings : Optional[int]
+            Number of sell ratings. (provider: tmx)
+        hold_ratings : Optional[int]
+            Number of hold ratings. (provider: tmx)
+        consensus_action : Optional[str]
+            Consensus action. (provider: tmx)
         recommendation : Optional[str]
             Recommendation - buy, sell, etc. (provider: yfinance)
         recommendation_mean : Optional[float]
@@ -335,7 +347,7 @@ class ROUTER_equity_estimates(Container):
                     "provider": self._get_provider(
                         provider,
                         "equity.estimates.consensus",
-                        ("fmp", "intrinio", "yfinance"),
+                        ("fmp", "intrinio", "tmx", "yfinance"),
                     )
                 },
                 standard_params={
@@ -346,6 +358,7 @@ class ROUTER_equity_estimates(Container):
                     "symbol": {
                         "fmp": {"multiple_items_allowed": True, "choices": None},
                         "intrinio": {"multiple_items_allowed": True, "choices": None},
+                        "tmx": {"multiple_items_allowed": True, "choices": None},
                         "yfinance": {"multiple_items_allowed": True, "choices": None},
                     }
                 },
@@ -418,7 +431,7 @@ class ROUTER_equity_estimates(Container):
             Fiscal quarter for the estimate.
         calendar_year : Optional[int]
             Calendar year for the estimate.
-        calendar_period : Optional[Union[int, str]]
+        calendar_period : Optional[Union[str, int]]
             Calendar quarter for the estimate.
         low_estimate : Optional[int]
             The EBITDA estimate low for the period.
@@ -473,13 +486,13 @@ class ROUTER_equity_estimates(Container):
         symbol: Annotated[
             Union[str, None, List[Optional[str]]],
             OpenBBField(
-                description="Symbol to get data for. Multiple comma separated items allowed for provider(s): fmp, intrinio."
+                description="Symbol to get data for. Multiple comma separated items allowed for provider(s): fmp, intrinio, seeking_alpha."
             ),
         ] = None,
         provider: Annotated[
-            Optional[Literal["fmp", "intrinio"]],
+            Optional[Literal["fmp", "intrinio", "seeking_alpha"]],
             OpenBBField(
-                description="The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: fmp, intrinio."
+                description="The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: fmp, intrinio, seeking_alpha."
             ),
         ] = None,
         **kwargs
@@ -489,9 +502,9 @@ class ROUTER_equity_estimates(Container):
         Parameters
         ----------
         symbol : Union[str, None, List[Optional[str]]]
-            Symbol to get data for. Multiple comma separated items allowed for provider(s): fmp, intrinio.
-        provider : Optional[Literal['fmp', 'intrinio']]
-            The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: fmp, intrinio.
+            Symbol to get data for. Multiple comma separated items allowed for provider(s): fmp, intrinio, seeking_alpha.
+        provider : Optional[Literal['fmp', 'intrinio', 'seeking_alpha']]
+            The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: fmp, intrinio, seeking_alpha.
         fiscal_period : Optional[Union[Literal['annual', 'quarter'], Literal['fy', 'q1', 'q2', 'q3', 'q4']]]
             The future fiscal period to retrieve estimates for. (provider: fmp, intrinio)
         limit : Optional[int]
@@ -504,13 +517,15 @@ class ROUTER_equity_estimates(Container):
             The future calendar year to retrieve estimates for. When no symbol and year is supplied the current calendar year is used. (provider: intrinio)
         calendar_period : Optional[Literal['q1', 'q2', 'q3', 'q4']]
             The future calendar period to retrieve estimates for. (provider: intrinio)
+        period : Literal['annual', 'quarter']
+            The reporting period. (provider: seeking_alpha)
 
         Returns
         -------
         OBBject
             results : List[ForwardEpsEstimates]
                 Serializable results.
-            provider : Optional[Literal['fmp', 'intrinio']]
+            provider : Optional[Literal['fmp', 'intrinio', 'seeking_alpha']]
                 Provider name.
             warnings : Optional[List[Warning_]]
                 List of warnings.
@@ -557,6 +572,18 @@ class ROUTER_equity_estimates(Container):
             The mean estimate for the period two months ago. (provider: intrinio)
         mean_3m : Optional[float]
             The mean estimate for the period three months ago. (provider: intrinio)
+        normalized_actual : Optional[float]
+            Actual normalized EPS. (provider: seeking_alpha)
+        period_growth : Optional[float]
+            Estimated (or actual if reported) EPS growth for the period. (provider: seeking_alpha)
+        low_estimate_gaap : Optional[float]
+            Estimated GAAP EPS low for the period. (provider: seeking_alpha)
+        high_estimate_gaap : Optional[float]
+            Estimated GAAP EPS high for the period. (provider: seeking_alpha)
+        mean_gaap : Optional[float]
+            Estimated GAAP EPS mean for the period. (provider: seeking_alpha)
+        gaap_actual : Optional[float]
+            Actual GAAP EPS. (provider: seeking_alpha)
 
         Examples
         --------
@@ -572,7 +599,7 @@ class ROUTER_equity_estimates(Container):
                     "provider": self._get_provider(
                         provider,
                         "equity.estimates.forward_eps",
-                        ("fmp", "intrinio"),
+                        ("fmp", "intrinio", "seeking_alpha"),
                     )
                 },
                 standard_params={
@@ -583,6 +610,10 @@ class ROUTER_equity_estimates(Container):
                     "symbol": {
                         "fmp": {"multiple_items_allowed": True, "choices": None},
                         "intrinio": {"multiple_items_allowed": True, "choices": None},
+                        "seeking_alpha": {
+                            "multiple_items_allowed": True,
+                            "choices": None,
+                        },
                     }
                 },
             )
@@ -688,13 +719,13 @@ class ROUTER_equity_estimates(Container):
         symbol: Annotated[
             Union[str, None, List[Optional[str]]],
             OpenBBField(
-                description="Symbol to get data for. Multiple comma separated items allowed for provider(s): intrinio."
+                description="Symbol to get data for. Multiple comma separated items allowed for provider(s): intrinio, seeking_alpha."
             ),
         ] = None,
         provider: Annotated[
-            Optional[Literal["intrinio"]],
+            Optional[Literal["intrinio", "seeking_alpha"]],
             OpenBBField(
-                description="The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: intrinio."
+                description="The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: intrinio, seeking_alpha."
             ),
         ] = None,
         **kwargs
@@ -704,9 +735,9 @@ class ROUTER_equity_estimates(Container):
         Parameters
         ----------
         symbol : Union[str, None, List[Optional[str]]]
-            Symbol to get data for. Multiple comma separated items allowed for provider(s): intrinio.
-        provider : Optional[Literal['intrinio']]
-            The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: intrinio.
+            Symbol to get data for. Multiple comma separated items allowed for provider(s): intrinio, seeking_alpha.
+        provider : Optional[Literal['intrinio', 'seeking_alpha']]
+            The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: intrinio, seeking_alpha.
         fiscal_year : Optional[int]
             The future fiscal year to retrieve estimates for. When no symbol and year is supplied the current calendar year is used. (provider: intrinio)
         fiscal_period : Optional[Literal['fy', 'q1', 'q2', 'q3', 'q4']]
@@ -715,13 +746,15 @@ class ROUTER_equity_estimates(Container):
             The future calendar year to retrieve estimates for. When no symbol and year is supplied the current calendar year is used. (provider: intrinio)
         calendar_period : Optional[Literal['q1', 'q2', 'q3', 'q4']]
             The future calendar period to retrieve estimates for. (provider: intrinio)
+        period : Literal['annual', 'quarter']
+            The reporting period. (provider: seeking_alpha)
 
         Returns
         -------
         OBBject
             results : List[ForwardSalesEstimates]
                 Serializable results.
-            provider : Optional[Literal['intrinio']]
+            provider : Optional[Literal['intrinio', 'seeking_alpha']]
                 Provider name.
             warnings : Optional[List[Warning_]]
                 List of warnings.
@@ -776,6 +809,10 @@ class ROUTER_equity_estimates(Container):
             Number of revisions down in the last 3 months. (provider: intrinio)
         revisions_3m_change_percent : Optional[float]
             The analyst revisions percent change in estimate for the period of 3 months. (provider: intrinio)
+        actual : Optional[int]
+            Actual sales (revenue) for the period. (provider: seeking_alpha)
+        period_growth : Optional[float]
+            Estimated (or actual if reported) EPS growth for the period. (provider: seeking_alpha)
 
         Examples
         --------
@@ -791,7 +828,7 @@ class ROUTER_equity_estimates(Container):
                     "provider": self._get_provider(
                         provider,
                         "equity.estimates.forward_sales",
-                        ("intrinio",),
+                        ("intrinio", "seeking_alpha"),
                     )
                 },
                 standard_params={
@@ -800,7 +837,11 @@ class ROUTER_equity_estimates(Container):
                 extra_params=kwargs,
                 info={
                     "symbol": {
-                        "intrinio": {"multiple_items_allowed": True, "choices": None}
+                        "intrinio": {"multiple_items_allowed": True, "choices": None},
+                        "seeking_alpha": {
+                            "multiple_items_allowed": True,
+                            "choices": None,
+                        },
                     }
                 },
             )
@@ -931,16 +972,16 @@ class ROUTER_equity_estimates(Container):
         symbol: Annotated[
             Union[str, None, List[Optional[str]]],
             OpenBBField(
-                description="Symbol to get data for. Multiple comma separated items allowed for provider(s): benzinga, fmp."
+                description="Symbol to get data for. Multiple comma separated items allowed for provider(s): benzinga, finviz, fmp."
             ),
         ] = None,
         limit: Annotated[
             int, OpenBBField(description="The number of data entries to return.")
         ] = 200,
         provider: Annotated[
-            Optional[Literal["benzinga", "fmp"]],
+            Optional[Literal["benzinga", "finviz", "fmp"]],
             OpenBBField(
-                description="The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: benzinga, fmp."
+                description="The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: benzinga, finviz, fmp."
             ),
         ] = None,
         **kwargs
@@ -950,11 +991,11 @@ class ROUTER_equity_estimates(Container):
         Parameters
         ----------
         symbol : Union[str, None, List[Optional[str]]]
-            Symbol to get data for. Multiple comma separated items allowed for provider(s): benzinga, fmp.
+            Symbol to get data for. Multiple comma separated items allowed for provider(s): benzinga, finviz, fmp.
         limit : int
             The number of data entries to return.
-        provider : Optional[Literal['benzinga', 'fmp']]
-            The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: benzinga, fmp.
+        provider : Optional[Literal['benzinga', 'finviz', 'fmp']]
+            The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: benzinga, finviz, fmp.
         page : Optional[int]
             Page offset. For optimization, performance and technical reasons, page offsets are limited from 0 - 100000. Limit the query results by other parameters such as date. Used in conjunction with the limit and date parameters. (provider: benzinga)
         date : Optional[datetime.date]
@@ -983,7 +1024,7 @@ class ROUTER_equity_estimates(Container):
         OBBject
             results : List[PriceTarget]
                 Serializable results.
-            provider : Optional[Literal['benzinga', 'fmp']]
+            provider : Optional[Literal['benzinga', 'finviz', 'fmp']]
                 Provider name.
             warnings : Optional[List[Warning_]]
                 List of warnings.
@@ -1042,6 +1083,10 @@ class ROUTER_equity_estimates(Container):
             Unique ID of this entry. (provider: benzinga)
         last_updated : Optional[datetime]
             Last updated timestamp, UTC. (provider: benzinga)
+        status : Optional[str]
+            The action taken by the firm. This could be 'Upgrade', 'Downgrade', 'Reiterated', etc. (provider: finviz)
+        rating_change : Optional[str]
+            The rating given by the analyst. This could be 'Buy', 'Sell', 'Underweight', etc. If the rating is a revision, the change is indicated by '->' (provider: finviz)
         news_url : Optional[str]
             News URL of the price target. (provider: fmp)
         news_title : Optional[str]
@@ -1066,7 +1111,7 @@ class ROUTER_equity_estimates(Container):
                     "provider": self._get_provider(
                         provider,
                         "equity.estimates.price_target",
-                        ("benzinga", "fmp"),
+                        ("benzinga", "finviz", "fmp"),
                     )
                 },
                 standard_params={
@@ -1077,6 +1122,7 @@ class ROUTER_equity_estimates(Container):
                 info={
                     "symbol": {
                         "benzinga": {"multiple_items_allowed": True, "choices": None},
+                        "finviz": {"multiple_items_allowed": True, "choices": None},
                         "fmp": {"multiple_items_allowed": True, "choices": None},
                     },
                     "action": {

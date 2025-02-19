@@ -46,6 +46,7 @@ from openbb_cli.session import Session
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.styles import Style
 from pydantic import BaseModel
+from openbb_cli.controllers.ai_controller import AIController
 
 PLATFORM_ROUTERS = {
     d: "menu" if not isinstance(getattr(obb, d), BaseModel) else "command"
@@ -498,6 +499,10 @@ class CLIController(BaseController):
                     f"[red]File '{routine_path}' doesn't exist.[/red]"
                 )
                 return
+
+    def call_ai(self, _):
+        """Process ai command."""
+        self.queue = self.load_class(AIController, self.queue)
 
 
 def handle_job_cmds(jobs_cmds: Optional[List[str]]) -> Optional[List[str]]:

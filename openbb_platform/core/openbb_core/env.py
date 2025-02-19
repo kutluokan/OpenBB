@@ -59,6 +59,21 @@ class Env(metaclass=SingletonMeta):
         """Hub backend: sets the backend for the OpenBB Hub."""
         return self._environ.get("OPENBB_HUB_BACKEND", "https://payments.openbb.co")
 
+    @property
+    def AI_API_KEY(self) -> Optional[str]:
+        """AI API key: sets the API key for AI features."""
+        return self._environ.get("OPENBB_AI_API_KEY", None)
+
+    @property
+    def AI_PROVIDER(self) -> str:
+        """AI provider: sets which AI provider to use."""
+        return self._environ.get("OPENBB_AI_PROVIDER", "openai")
+
+    @property
+    def PAT(self) -> Optional[str]:
+        """Personal Access Token: sets the OpenBB Hub PAT."""
+        return self._environ.get("OPENBB_PAT", None)
+
     @staticmethod
     def str2bool(value) -> bool:
         """Match a value to its boolean correspondent."""

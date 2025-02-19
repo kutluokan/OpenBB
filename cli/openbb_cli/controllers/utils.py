@@ -21,6 +21,7 @@ from openbb_cli.session import Session
 from openbb_core.app.model.obbject import OBBject
 from pytz import all_timezones, timezone
 from rich.table import Table
+from openbb import obb
 
 if TYPE_CHECKING:
     from openbb_charting.core.openbb_figure import OpenBBFigure
@@ -102,7 +103,7 @@ def print_guest_block_msg():
 
 
 def bootup():
-    """Bootup the cli."""
+    """Initial bootup setup."""
     if sys.platform == "win32":
         # Enable VT100 Escape Sequence for WINDOWS 10 Ver. 1607
         os.system("")  # nosec # noqa: S605,S607
@@ -115,6 +116,15 @@ def bootup():
             sys.stdout.reconfigure(encoding="utf-8")  # type: ignore
     except Exception as e:
         session.console.print(e, "\n")
+
+    # Add automatic PAT login
+    pat_value = getattr(session.env, 'PAT', None)
+    if pat_value:
+        try:
+            obb.account.login(pat=pat_value)
+            session.console.print("[green]Successfully logged in with PAT from environment[/green]")
+        except Exception as e:
+            session.console.print(f"[red]Failed to login with PAT: {str(e)}[/red]")
 
 
 def welcome_message():

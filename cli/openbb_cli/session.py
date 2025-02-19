@@ -10,6 +10,7 @@ from openbb_core.app.model.abstract.singleton import SingletonMeta
 from openbb_core.app.model.charts.charting_settings import ChartingSettings
 from openbb_core.app.model.user_settings import UserSettings as User
 from prompt_toolkit import PromptSession
+from openbb_core.env import Env
 
 from openbb_cli.argparse_translator.obbject_registry import Registry
 from openbb_cli.config.completer import CustomFileHistory
@@ -41,6 +42,7 @@ class Session(metaclass=SingletonMeta):
 
         self._obb = obb
         self._settings = Settings()
+        self._env = Env()
         self._style = Style(
             style=self._settings.RICH_STYLE,
             directory=Path(self._obb.user.preferences.user_styles_directory),  # type: ignore[union-attr]
@@ -82,6 +84,11 @@ class Session(metaclass=SingletonMeta):
     def prompt_session(self) -> Optional[PromptSession]:
         """Get prompt session."""
         return self._prompt_session
+
+    @property
+    def env(self) -> Env:
+        """Get environment variables."""
+        return self._env
 
     def _get_prompt_session(self) -> Optional[PromptSession]:
         """Initialize prompt session."""

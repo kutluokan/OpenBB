@@ -545,7 +545,7 @@ files = [
 [[package]]
 name = "courlan"
 version = "1.3.2"
-description = "Clean, filter and sample URLs to optimize data collection – includes spam, content type and language filters."
+description = "Clean, filter and sample URLs to optimize data collection ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ includes spam, content type and language filters."
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]

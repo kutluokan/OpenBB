@@ -98,6 +98,12 @@ class Settings(BaseModel):
         command="obbject_msg",
         group=SettingGroups.feature_flags,
     )
+    AI_ENABLED: bool = Field(
+        default=False,
+        description="whether to enable AI features",
+        command="ai",
+        group=SettingGroups.feature_flags,
+    )
 
     # PREFERENCES
     TIMEZONE: Literal[tuple(all_timezones)] = Field(  # type: ignore[valid-type]
@@ -140,6 +146,12 @@ class Settings(BaseModel):
         default=5,
         description="number of columns to show (when not using interactive tables).",
         command="n_cols",
+        group=SettingGroups.preferences,
+    )
+    AI_PROVIDER: Literal["openai", "anthropic"] = Field(
+        default="openai",
+        description="AI provider to use",
+        command="ai_provider",
         group=SettingGroups.preferences,
     )
 

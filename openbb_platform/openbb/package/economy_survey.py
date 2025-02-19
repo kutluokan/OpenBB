@@ -174,6 +174,12 @@ class ROUTER_economy_survey(Container):
             Union[datetime.date, None, str],
             OpenBBField(description="End date of the data, in YYYY-MM-DD format."),
         ] = None,
+        chart: Annotated[
+            bool,
+            OpenBBField(
+                description="Whether to create a chart or not, by default False."
+            ),
+        ] = False,
         provider: Annotated[
             Optional[Literal["bls"]],
             OpenBBField(
@@ -192,6 +198,8 @@ class ROUTER_economy_survey(Container):
             Start date of the data, in YYYY-MM-DD format.
         end_date : Union[date, None, str]
             End date of the data, in YYYY-MM-DD format.
+        chart : bool
+            Whether to create a chart or not, by default False.
         provider : Optional[Literal['bls']]
             The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: bls.
         calculations : bool
@@ -268,6 +276,7 @@ class ROUTER_economy_survey(Container):
                     "end_date": end_date,
                 },
                 extra_params=kwargs,
+                chart=chart,
                 info={
                     "symbol": {"bls": {"multiple_items_allowed": True, "choices": None}}
                 },

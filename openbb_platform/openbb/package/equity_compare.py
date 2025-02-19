@@ -13,6 +13,7 @@ from typing_extensions import Annotated
 class ROUTER_equity_compare(Container):
     """/equity/compare
     company_facts
+    groups
     peers
     """
 
@@ -95,7 +96,7 @@ class ROUTER_equity_compare(Container):
             The fiscal year.
         fiscal_period : Optional[str]
             The fiscal period of the fiscal year.
-        cik : Optional[Union[int, str]]
+        cik : Optional[Union[str, int]]
             Central Index Key (CIK) for the requested entity. (provider: sec)
         location : Optional[str]
             Geographic location of the reporting entity. (provider: sec)
@@ -428,6 +429,151 @@ class ROUTER_equity_compare(Container):
                         "sec": {
                             "multiple_items_allowed": False,
                             "choices": ["fy", "q1", "q2", "q3", "q4"],
+                        }
+                    },
+                },
+            )
+        )
+
+    @exception_handler
+    @validate
+    def groups(
+        self,
+        provider: Annotated[
+            Optional[Literal["finviz"]],
+            OpenBBField(
+                description="The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: finviz."
+            ),
+        ] = None,
+        **kwargs
+    ) -> OBBject:
+        """Get company data grouped by sector, industry or country and display either performance or valuation metrics.
+
+        Valuation metrics include price to earnings, price to book, price to sales ratios and price to cash flow.
+        Performance metrics include the stock price change for different time periods.
+
+
+        Parameters
+        ----------
+        provider : Optional[Literal['finviz']]
+            The provider to use, by default None. If None, the priority list configured in the settings is used. Default priority: finviz.
+        group : Literal['sector', 'industry', 'country', 'capitalization', 'energy', 'materials', 'industrials', 'consumer_cyclical', 'consumer_defensive', 'healthcare', 'financial', 'technology', 'communication_services', 'utilities', 'real_estate']
+            US-listed stocks only. When an individual sector is selected, it is broken down by industry. The default is 'sector'. (provider: finviz)
+        metric : Literal['performance', 'valuation', 'overview']
+            Statistical metric to return. Select from: ['performance', 'valuation', 'overview'] The default is 'performance'. (provider: finviz)
+
+        Returns
+        -------
+        OBBject
+            results : List[CompareGroups]
+                Serializable results.
+            provider : Optional[Literal['finviz']]
+                Provider name.
+            warnings : Optional[List[Warning_]]
+                List of warnings.
+            chart : Optional[Chart]
+                Chart object.
+            extra : Dict[str, Any]
+                Extra info.
+
+        CompareGroups
+        -------------
+        name : Optional[str]
+            Name or label of the group. (provider: finviz)
+        stocks : Optional[int]
+            The number of stocks in the group. (provider: finviz)
+        market_cap : Optional[int]
+            The market cap of the group. (provider: finviz)
+        performance_1d : Optional[float]
+            The performance in the last day, as a normalized percent. (provider: finviz)
+        performance_1w : Optional[float]
+            The performance in the last week, as a normalized percent. (provider: finviz)
+        performance_1m : Optional[float]
+            The performance in the last month, as a normalized percent. (provider: finviz)
+        performance_3m : Optional[float]
+            The performance in the last quarter, as a normalized percent. (provider: finviz)
+        performance_6m : Optional[float]
+            The performance in the last half year, as a normalized percent. (provider: finviz)
+        performance_1y : Optional[float]
+            The performance in the last year, as a normalized percent. (provider: finviz)
+        performance_ytd : Optional[float]
+            The performance in the year to date, as a normalized percent. (provider: finviz)
+        dividend_yield : Optional[float]
+            The dividend yield of the group, as a normalized percent. (provider: finviz)
+        pe : Optional[float]
+            The P/E ratio of the group. (provider: finviz)
+        forward_pe : Optional[float]
+            The forward P/E ratio of the group. (provider: finviz)
+        peg : Optional[float]
+            The PEG ratio of the group. (provider: finviz)
+        eps_growth_past_5y : Optional[float]
+            The EPS growth of the group for the past 5 years, as a normalized percent. (provider: finviz)
+        eps_growth_next_5y : Optional[float]
+            The estimated EPS growth of the groupo for the next 5 years, as a normalized percent. (provider: finviz)
+        sales_growth_past_5y : Optional[float]
+            The sales growth of the group for the past 5 years, as a normalized percent. (provider: finviz)
+        float_short : Optional[float]
+            The percent of the float shorted for the group, as a normalized value. (provider: finviz)
+        analyst_recommendation : Optional[float]
+            The analyst consensus, on a scale of 1-5 where 1 is a buy and 5 is a sell. (provider: finviz)
+        volume : Optional[int]
+            The trading volume. (provider: finviz)
+        volume_average : Optional[int]
+            The 3-month average volume of the group. (provider: finviz)
+        volume_relative : Optional[float]
+            The relative volume compared to the 3-month average volume. (provider: finviz)
+
+        Examples
+        --------
+        >>> from openbb import obb
+        >>> obb.equity.compare.groups(provider='finviz')
+        >>> # Group by sector and analyze valuation.
+        >>> obb.equity.compare.groups(group='sector', metric='valuation', provider='finviz')
+        >>> # Group by industry and analyze performance.
+        >>> obb.equity.compare.groups(group='industry', metric='performance', provider='finviz')
+        >>> # Group by country and analyze valuation.
+        >>> obb.equity.compare.groups(group='country', metric='valuation', provider='finviz')
+        """  # noqa: E501
+
+        return self._run(
+            "/equity/compare/groups",
+            **filter_inputs(
+                provider_choices={
+                    "provider": self._get_provider(
+                        provider,
+                        "equity.compare.groups",
+                        ("finviz",),
+                    )
+                },
+                standard_params={},
+                extra_params=kwargs,
+                info={
+                    "group": {
+                        "finviz": {
+                            "multiple_items_allowed": False,
+                            "choices": [
+                                "capitalization",
+                                "communication_services",
+                                "consumer_cyclical",
+                                "consumer_defensive",
+                                "country",
+                                "energy",
+                                "financial",
+                                "healthcare",
+                                "industrials",
+                                "industry",
+                                "materials",
+                                "real_estate",
+                                "sector",
+                                "technology",
+                                "utilities",
+                            ],
+                        }
+                    },
+                    "metric": {
+                        "finviz": {
+                            "multiple_items_allowed": False,
+                            "choices": ["performance", "valuation", "overview"],
                         }
                     },
                 },
