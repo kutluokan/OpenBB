@@ -36,16 +36,47 @@ class AIController(BaseController):
     PATH = "/ai/"
     CHOICES_GENERATION = True
     
-    CHOICES_COMMANDS_CUSTOM = {
-        "chat": ["-q"],
-        "suggest": ["-t", "-r"],
-        "prepare": ["-b", "-c"],
-    }
-    
     def __init__(self, queue: Optional[List[str]] = None):
         """Initialize controller."""
         super().__init__(queue)
-        self.update_completer(self.choices_default)
+        
+        # Set up argument parsers for each command
+        self.chat_parser = argparse.ArgumentParser(prog='chat', add_help=False)
+        self.chat_parser.add_argument("-q", "--question", help="Question to ask", dest="question", required=True)
+        
+        self.suggest_parser = argparse.ArgumentParser(prog='suggest', add_help=False)
+        self.suggest_parser.add_argument("-t", "--timeframe", help="Investment timeframe (short/medium/long)", dest="timeframe", choices=["short", "medium", "long"], default="short")
+        self.suggest_parser.add_argument("-r", "--risk", help="Risk level (1-5)", dest="risk", type=int, choices=range(1, 6), default=3)
+        
+        self.prepare_parser = argparse.ArgumentParser(prog='prepare', add_help=False)
+        self.prepare_parser.add_argument("-b", "--belief", help="Your market belief or prediction", dest="belief", required=True)
+        self.prepare_parser.add_argument("-c", "--confidence", help="Confidence level (0-100)", dest="confidence", type=int, choices=range(0, 101), default=90)
+        
+        # Initialize choices for command completion
+        choices = self.choices_default
+        choices["chat"] = {
+            "--question": None,
+            "-q": "--question",
+            "--help": None,
+            "-h": "--help",
+        }
+        choices["suggest"] = {
+            "--timeframe": {"short": None, "medium": None, "long": None},
+            "-t": "--timeframe",
+            "--risk": {str(i): None for i in range(1, 6)},
+            "-r": "--risk",
+            "--help": None,
+            "-h": "--help",
+        }
+        choices["prepare"] = {
+            "--belief": None,
+            "-b": "--belief",
+            "--confidence": {str(i): None for i in range(0, 101)},
+            "-c": "--confidence",
+            "--help": None,
+            "-h": "--help",
+        }
+        self.update_completer(choices)
         
         # Debug information
         session.console.print(f"ENV_FILE_SETTINGS path: {ENV_FILE_SETTINGS}")
@@ -86,15 +117,11 @@ class AIController(BaseController):
             session.console.print("Usage: prepare -b <belief> -c <confidence_level>")
             return
 
-        parser = argparse.ArgumentParser(prog='prepare', add_help=False)
-        parser.add_argument("-b", "--belief", help="Your market belief or prediction", dest="belief", required=True)
-        parser.add_argument("-c", "--confidence", help="Confidence level (0-100)", dest="confidence", type=int, default=90)
-        
         if other_args and not other_args[0].startswith("-"):
             other_args.insert(0, "--belief")
             
         try:
-            ns_parser = parser.parse_args(other_args)
+            ns_parser = self.prepare_parser.parse_args(other_args)
             
             if self.provider == "openai":
                 response = self.client.chat.completions.create(
@@ -143,12 +170,8 @@ class AIController(BaseController):
             session.console.print("Usage: suggest -t <timeframe> -r <risk_level>")
             return
 
-        parser = argparse.ArgumentParser(prog='suggest', add_help=False)
-        parser.add_argument("-t", "--timeframe", help="Investment timeframe (short/medium/long)", dest="timeframe", default="short")
-        parser.add_argument("-r", "--risk", help="Risk level (1-5)", dest="risk", type=int, default=3)
-        
         try:
-            ns_parser = parser.parse_args(other_args)
+            ns_parser = self.suggest_parser.parse_args(other_args)
             
             if self.provider == "openai":
                 response = self.client.chat.completions.create(
@@ -198,14 +221,11 @@ class AIController(BaseController):
             session.console.print("Usage: chat -q <question>")
             return
 
-        parser = argparse.ArgumentParser(prog='chat', add_help=False)
-        parser.add_argument("-q", "--question", help="Question to ask", dest="question", required=True)
-        
         if other_args and not other_args[0].startswith("-"):
             other_args.insert(0, "--question")
             
         try:
-            ns_parser = parser.parse_args(other_args)
+            ns_parser = self.chat_parser.parse_args(other_args)
             
             if self.provider == "openai":
                 response = self.client.chat.completions.create(
