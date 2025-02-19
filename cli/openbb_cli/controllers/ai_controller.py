@@ -3,7 +3,7 @@
 from typing import List, Optional
 import os
 from pathlib import Path
-import openai
+from openai import OpenAI
 from anthropic import Anthropic
 from dotenv import load_dotenv
 from openbb_cli.controllers.base_controller import BaseController
@@ -11,6 +11,7 @@ from openbb_cli.session import Session
 from openbb_cli.config.menu_text import MenuText
 from openbb_cli.config.constants import ENV_FILE_SETTINGS
 from openbb_core.app.constants import OPENBB_DIRECTORY
+import argparse
 
 session = Session()
 
@@ -67,23 +68,28 @@ class AIController(BaseController):
             return
             
         if self.provider == "openai":
-            openai.api_key = self.api_key
+            self.client = OpenAI(api_key=self.api_key)
         else:
             self.anthropic = Anthropic(api_key=self.api_key)
             
     def call_analyze(self, other_args: List[str]):
         """Analyze data using AI."""
-        parser = self.parse_simple_args(other_args)
+        if not other_args:
+            session.console.print("Usage: analyze -d <data_to_analyze>")
+            return
+
+        parser = argparse.ArgumentParser(prog='analyze', add_help=False)
         parser.add_argument("-d", "--data", help="Data to analyze", dest="data", required=True)
         
         if other_args and not other_args[0].startswith("-"):
             other_args.insert(0, "--data")
             
-        ns_parser = self.parse_known_args_and_warn(parser, other_args)
-        if ns_parser:
+        try:
+            ns_parser = parser.parse_args(other_args)
+            
             if self.provider == "openai":
-                response = openai.ChatCompletion.create(
-                    model="gpt-4",
+                response = self.client.chat.completions.create(
+                    model="chatgpt-4o-latest",
                     messages=[
                         {"role": "system", "content": "You are a financial analysis assistant."},
                         {"role": "user", "content": f"Analyze this financial data: {ns_parser.data}"}
@@ -100,20 +106,27 @@ class AIController(BaseController):
                     }]
                 )
                 session.console.print(response.content[0].text)
+        except Exception as e:
+            session.console.print(f"Error: {str(e)}")
 
     def call_explain(self, other_args: List[str]):
         """Explain financial concepts using AI."""
-        parser = self.parse_simple_args(other_args)
+        if not other_args:
+            session.console.print("Usage: explain -t <term_to_explain>")
+            return
+
+        parser = argparse.ArgumentParser(prog='explain', add_help=False)
         parser.add_argument("-t", "--term", help="Term to explain", dest="term", required=True)
         
         if other_args and not other_args[0].startswith("-"):
             other_args.insert(0, "--term")
             
-        ns_parser = self.parse_known_args_and_warn(parser, other_args)
-        if ns_parser:
+        try:
+            ns_parser = parser.parse_args(other_args)
+            
             if self.provider == "openai":
-                response = openai.ChatCompletion.create(
-                    model="gpt-4",
+                response = self.client.chat.completions.create(
+                    model="chatgpt-4o-latest",
                     messages=[
                         {"role": "system", "content": "You are a financial education assistant."},
                         {"role": "user", "content": f"Explain this financial term: {ns_parser.term}"}
@@ -130,20 +143,27 @@ class AIController(BaseController):
                     }]
                 )
                 session.console.print(response.content[0].text)
+        except Exception as e:
+            session.console.print(f"Error: {str(e)}")
 
     def call_suggest(self, other_args: List[str]):
         """Get investment suggestions using AI."""
-        parser = self.parse_simple_args(other_args)
+        if not other_args:
+            session.console.print("Usage: suggest -c <investment_context>")
+            return
+
+        parser = argparse.ArgumentParser(prog='suggest', add_help=False)
         parser.add_argument("-c", "--context", help="Investment context", dest="context", required=True)
         
         if other_args and not other_args[0].startswith("-"):
             other_args.insert(0, "--context")
             
-        ns_parser = self.parse_known_args_and_warn(parser, other_args)
-        if ns_parser:
+        try:
+            ns_parser = parser.parse_args(other_args)
+            
             if self.provider == "openai":
-                response = openai.ChatCompletion.create(
-                    model="gpt-4",
+                response = self.client.chat.completions.create(
+                    model="chatgpt-4o-latest",
                     messages=[
                         {"role": "system", "content": "You are an investment suggestion assistant."},
                         {"role": "user", "content": f"Suggest investments based on: {ns_parser.context}"}
@@ -160,20 +180,27 @@ class AIController(BaseController):
                     }]
                 )
                 session.console.print(response.content[0].text)
+        except Exception as e:
+            session.console.print(f"Error: {str(e)}")
 
     def call_chat(self, other_args: List[str]):
         """Chat with AI about financial topics."""
-        parser = self.parse_simple_args(other_args)
+        if not other_args:
+            session.console.print("Usage: chat -q <question>")
+            return
+
+        parser = argparse.ArgumentParser(prog='chat', add_help=False)
         parser.add_argument("-q", "--question", help="Question to ask", dest="question", required=True)
         
         if other_args and not other_args[0].startswith("-"):
             other_args.insert(0, "--question")
             
-        ns_parser = self.parse_known_args_and_warn(parser, other_args)
-        if ns_parser:
+        try:
+            ns_parser = parser.parse_args(other_args)
+            
             if self.provider == "openai":
-                response = openai.ChatCompletion.create(
-                    model="gpt-4",
+                response = self.client.chat.completions.create(
+                    model="chatgpt-4o-latest",
                     messages=[
                         {"role": "system", "content": "You are a financial assistant."},
                         {"role": "user", "content": ns_parser.question}
@@ -190,6 +217,8 @@ class AIController(BaseController):
                     }]
                 )
                 session.console.print(response.content[0].text)
+        except Exception as e:
+            session.console.print(f"Error: {str(e)}")
 
     def print_help(self):
         """Print help."""
