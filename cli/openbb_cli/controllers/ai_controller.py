@@ -32,12 +32,20 @@ for env_path in possible_env_paths:
 class AIController(BaseController):
     """AI Controller class."""
     
-    CHOICES_COMMANDS = ["analyze", "explain", "suggest", "chat"]
+    CHOICES_COMMANDS = ["chat", "suggest", "prepare"]
     PATH = "/ai/"
+    CHOICES_GENERATION = True
+    
+    CHOICES_COMMANDS_CUSTOM = {
+        "chat": ["-q"],
+        "suggest": ["-t", "-r"],
+        "prepare": ["-b", "-c"],
+    }
     
     def __init__(self, queue: Optional[List[str]] = None):
         """Initialize controller."""
         super().__init__(queue)
+        self.update_completer(self.choices_default)
         
         # Debug information
         session.console.print(f"ENV_FILE_SETTINGS path: {ENV_FILE_SETTINGS}")
@@ -72,17 +80,18 @@ class AIController(BaseController):
         else:
             self.anthropic = Anthropic(api_key=self.api_key)
             
-    def call_analyze(self, other_args: List[str]):
-        """Analyze data using AI."""
+    def call_prepare(self, other_args: List[str]):
+        """Prepare optimal investment strategy based on user's market belief."""
         if not other_args:
-            session.console.print("Usage: analyze -d <data_to_analyze>")
+            session.console.print("Usage: prepare -b <belief> -c <confidence_level>")
             return
 
-        parser = argparse.ArgumentParser(prog='analyze', add_help=False)
-        parser.add_argument("-d", "--data", help="Data to analyze", dest="data", required=True)
+        parser = argparse.ArgumentParser(prog='prepare', add_help=False)
+        parser.add_argument("-b", "--belief", help="Your market belief or prediction", dest="belief", required=True)
+        parser.add_argument("-c", "--confidence", help="Confidence level (0-100)", dest="confidence", type=int, default=90)
         
         if other_args and not other_args[0].startswith("-"):
-            other_args.insert(0, "--data")
+            other_args.insert(0, "--belief")
             
         try:
             ns_parser = parser.parse_args(other_args)
@@ -91,8 +100,19 @@ class AIController(BaseController):
                 response = self.client.chat.completions.create(
                     model="chatgpt-4o-latest",
                     messages=[
-                        {"role": "system", "content": "You are a financial analysis assistant."},
-                        {"role": "user", "content": f"Analyze this financial data: {ns_parser.data}"}
+                        {"role": "system", "content": """You are an AI investment strategist. 
+                        Analyze the user's market belief and suggest the optimal short-term investment strategy.
+                        Consider various instruments including stocks, options, and crypto.
+                        Provide specific trade suggestions with clear entry/exit points and risk assessment."""},
+                        {"role": "user", "content": f"""Based on this market belief (confidence: {ns_parser.confidence}%):
+                        '{ns_parser.belief}'
+                        
+                        What's the optimal short-term investment strategy? Consider:
+                        1. Best instruments to trade
+                        2. Specific entry/exit points
+                        3. Risk assessment
+                        4. Potential profit/loss scenarios
+                        5. Alternative strategies"""}
                     ]
                 )
                 session.console.print(response.choices[0].message.content)
@@ -102,44 +122,15 @@ class AIController(BaseController):
                     max_tokens=1000,
                     messages=[{
                         "role": "user",
-                        "content": f"Analyze this financial data: {ns_parser.data}"
-                    }]
-                )
-                session.console.print(response.content[0].text)
-        except Exception as e:
-            session.console.print(f"Error: {str(e)}")
-
-    def call_explain(self, other_args: List[str]):
-        """Explain financial concepts using AI."""
-        if not other_args:
-            session.console.print("Usage: explain -t <term_to_explain>")
-            return
-
-        parser = argparse.ArgumentParser(prog='explain', add_help=False)
-        parser.add_argument("-t", "--term", help="Term to explain", dest="term", required=True)
-        
-        if other_args and not other_args[0].startswith("-"):
-            other_args.insert(0, "--term")
-            
-        try:
-            ns_parser = parser.parse_args(other_args)
-            
-            if self.provider == "openai":
-                response = self.client.chat.completions.create(
-                    model="chatgpt-4o-latest",
-                    messages=[
-                        {"role": "system", "content": "You are a financial education assistant."},
-                        {"role": "user", "content": f"Explain this financial term: {ns_parser.term}"}
-                    ]
-                )
-                session.console.print(response.choices[0].message.content)
-            else:
-                response = self.anthropic.messages.create(
-                    model="claude-3-opus-20240229",
-                    max_tokens=1000,
-                    messages=[{
-                        "role": "user",
-                        "content": f"Explain this financial term: {ns_parser.term}"
+                        "content": f"""Based on this market belief (confidence: {ns_parser.confidence}%):
+                        '{ns_parser.belief}'
+                        
+                        What's the optimal short-term investment strategy? Consider:
+                        1. Best instruments to trade
+                        2. Specific entry/exit points
+                        3. Risk assessment
+                        4. Potential profit/loss scenarios
+                        5. Alternative strategies"""
                     }]
                 )
                 session.console.print(response.content[0].text)
@@ -147,17 +138,15 @@ class AIController(BaseController):
             session.console.print(f"Error: {str(e)}")
 
     def call_suggest(self, other_args: List[str]):
-        """Get investment suggestions using AI."""
+        """Get AI-driven investment suggestions based on market sentiment and trends."""
         if not other_args:
-            session.console.print("Usage: suggest -c <investment_context>")
+            session.console.print("Usage: suggest -t <timeframe> -r <risk_level>")
             return
 
         parser = argparse.ArgumentParser(prog='suggest', add_help=False)
-        parser.add_argument("-c", "--context", help="Investment context", dest="context", required=True)
+        parser.add_argument("-t", "--timeframe", help="Investment timeframe (short/medium/long)", dest="timeframe", default="short")
+        parser.add_argument("-r", "--risk", help="Risk level (1-5)", dest="risk", type=int, default=3)
         
-        if other_args and not other_args[0].startswith("-"):
-            other_args.insert(0, "--context")
-            
         try:
             ns_parser = parser.parse_args(other_args)
             
@@ -165,8 +154,19 @@ class AIController(BaseController):
                 response = self.client.chat.completions.create(
                     model="chatgpt-4o-latest",
                     messages=[
-                        {"role": "system", "content": "You are an investment suggestion assistant."},
-                        {"role": "user", "content": f"Suggest investments based on: {ns_parser.context}"}
+                        {"role": "system", "content": """You are an AI investment advisor specializing in trend detection
+                        and sentiment analysis. Analyze market data, news, and social media sentiment to suggest
+                        promising investment opportunities."""},
+                        {"role": "user", "content": f"""Generate investment suggestions for:
+                        Timeframe: {ns_parser.timeframe}
+                        Risk Level: {ns_parser.risk}/5
+                        
+                        Consider:
+                        1. Current market trends
+                        2. Social media sentiment
+                        3. News impact
+                        4. Technical indicators
+                        5. Risk/reward ratio"""}
                     ]
                 )
                 session.console.print(response.choices[0].message.content)
@@ -176,7 +176,16 @@ class AIController(BaseController):
                     max_tokens=1000,
                     messages=[{
                         "role": "user",
-                        "content": f"Suggest investments based on: {ns_parser.context}"
+                        "content": f"""Generate investment suggestions for:
+                        Timeframe: {ns_parser.timeframe}
+                        Risk Level: {ns_parser.risk}/5
+                        
+                        Consider:
+                        1. Current market trends
+                        2. Social media sentiment
+                        3. News impact
+                        4. Technical indicators
+                        5. Risk/reward ratio"""
                     }]
                 )
                 session.console.print(response.content[0].text)
@@ -184,7 +193,7 @@ class AIController(BaseController):
             session.console.print(f"Error: {str(e)}")
 
     def call_chat(self, other_args: List[str]):
-        """Chat with AI about financial topics."""
+        """Chat with AI about financial topics and investment strategies."""
         if not other_args:
             session.console.print("Usage: chat -q <question>")
             return
@@ -202,7 +211,12 @@ class AIController(BaseController):
                 response = self.client.chat.completions.create(
                     model="chatgpt-4o-latest",
                     messages=[
-                        {"role": "system", "content": "You are a financial assistant."},
+                        {"role": "system", "content": """You are a sophisticated financial assistant with expertise in:
+                        1. Market analysis and trading strategies
+                        2. Risk management and portfolio optimization
+                        3. Technical and fundamental analysis
+                        4. Current market trends and news impact
+                        Provide clear, actionable advice while being mindful of risks."""},
                         {"role": "user", "content": ns_parser.question}
                     ]
                 )
@@ -224,9 +238,8 @@ class AIController(BaseController):
         """Print help."""
         mt = MenuText("ai/")
         mt.add_info("AI Assistant Features")
-        mt.add_cmd("analyze", "analyze financial data using AI")
-        mt.add_cmd("explain", "get explanations of financial terms and concepts")
-        mt.add_cmd("suggest", "get investment suggestions based on context")
-        mt.add_cmd("chat", "have a conversation with AI about financial topics")
+        mt.add_cmd("chat", "discuss financial topics with AI assistant")
+        mt.add_cmd("suggest", "get AI-driven investment suggestions")
+        mt.add_cmd("prepare", "get optimal trade strategy based on your market belief")
         
         session.console.print(text=mt.menu_text, menu="AI") 
