@@ -25,7 +25,6 @@ possible_env_paths = [
 
 for env_path in possible_env_paths:
     if Path(env_path).exists():
-        session.console.print(f"Loading .env from: {env_path}")
         load_dotenv(env_path)
         break
 
@@ -78,26 +77,9 @@ class AIController(BaseController):
         }
         self.update_completer(choices)
         
-        # Debug information
-        session.console.print(f"ENV_FILE_SETTINGS path: {ENV_FILE_SETTINGS}")
-        session.console.print(f"OPENBB_DIRECTORY path: {OPENBB_DIRECTORY}")
-        session.console.print(f"Current working directory: {os.getcwd()}")
-        session.console.print(f"Root .env path: {Path(os.getcwd()).parent.parent / '.env'}")
-        session.console.print(f"Current .env exists: {Path(ENV_FILE_SETTINGS).exists()}")
-        session.console.print(f"OPENBB .env exists: {Path(OPENBB_DIRECTORY, '.env').exists()}")
-        session.console.print(f"Root .env exists: {(Path(os.getcwd()).parent.parent / '.env').exists()}")
-        
-        # Print all environment variables starting with OPENBB or OPENAI
-        for key, value in os.environ.items():
-            if key.startswith(("OPENBB_", "OPENAI_")):
-                session.console.print(f"Found env var: {key}")
-        
-        # Get API key directly from environment variables
+        # Get API key and provider
         self.api_key = os.getenv("OPENBB_AI_API_KEY") or os.getenv("OPENAI_API_KEY")
         self.provider = os.getenv("OPENBB_AI_PROVIDER", "openai")
-        
-        session.console.print(f"Found API key: {'Yes' if self.api_key else 'No'}")
-        session.console.print(f"Provider: {self.provider}")
         
         if not self.api_key:
             session.console.print(
