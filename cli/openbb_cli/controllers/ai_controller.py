@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import openai
 from anthropic import Anthropic
+from dotenv import load_dotenv
 from openbb_cli.controllers.base_controller import BaseController
 from openbb_cli.session import Session
 from openbb_cli.config.menu_text import MenuText
@@ -12,6 +13,20 @@ from openbb_cli.config.constants import ENV_FILE_SETTINGS
 from openbb_core.app.constants import OPENBB_DIRECTORY
 
 session = Session()
+
+# Try to load .env from multiple possible locations
+possible_env_paths = [
+    ENV_FILE_SETTINGS,
+    Path(OPENBB_DIRECTORY, '.env'),
+    Path(os.getcwd()).parent.parent / '.env',  # OpenBB root folder
+    Path('.env'),
+]
+
+for env_path in possible_env_paths:
+    if Path(env_path).exists():
+        session.console.print(f"Loading .env from: {env_path}")
+        load_dotenv(env_path)
+        break
 
 class AIController(BaseController):
     """AI Controller class."""
@@ -26,7 +41,16 @@ class AIController(BaseController):
         # Debug information
         session.console.print(f"ENV_FILE_SETTINGS path: {ENV_FILE_SETTINGS}")
         session.console.print(f"OPENBB_DIRECTORY path: {OPENBB_DIRECTORY}")
+        session.console.print(f"Current working directory: {os.getcwd()}")
+        session.console.print(f"Root .env path: {Path(os.getcwd()).parent.parent / '.env'}")
         session.console.print(f"Current .env exists: {Path(ENV_FILE_SETTINGS).exists()}")
+        session.console.print(f"OPENBB .env exists: {Path(OPENBB_DIRECTORY, '.env').exists()}")
+        session.console.print(f"Root .env exists: {(Path(os.getcwd()).parent.parent / '.env').exists()}")
+        
+        # Print all environment variables starting with OPENBB or OPENAI
+        for key, value in os.environ.items():
+            if key.startswith(("OPENBB_", "OPENAI_")):
+                session.console.print(f"Found env var: {key}")
         
         # Get API key directly from environment variables
         self.api_key = os.getenv("OPENBB_AI_API_KEY") or os.getenv("OPENAI_API_KEY")
