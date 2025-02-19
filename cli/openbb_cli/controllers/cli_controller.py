@@ -69,6 +69,7 @@ class CLIController(BaseController):
     CHOICES_COMMANDS = ["record", "stop", "exe", "results"]
     CHOICES_MENUS = [
         "settings",
+        "ai",
     ]
 
     for router, value in PLATFORM_ROUTERS.items():
@@ -118,6 +119,15 @@ class CLIController(BaseController):
             if isinstance(df.columns, pd.RangeIndex):
                 df.columns = [str(i) for i in df.columns]
             return print_rich_table(df, show_index=True)
+
+        # Add AI controller method
+        def method_call_ai(self, _):
+            """Process ai command."""
+            self.queue = self.load_class(AIController, self.queue)
+
+        # Bind AI method
+        bound_ai_method = MethodType(method_call_ai, self)
+        setattr(self, "call_ai", bound_ai_method)
 
         for router, value in PLATFORM_ROUTERS.items():
             target = getattr(obb, router)
@@ -241,6 +251,14 @@ class CLIController(BaseController):
             "settings",
             description="enable and disable feature flags, preferences and settings",
         )
+        
+        # Add AI menu section
+        mt.add_info("\nAI Features") 
+        mt.add_menu(
+            "ai",
+            description="interact with AI for financial analysis and insights",
+        )
+
         mt.add_raw("\n")
         mt.add_info("Record and execute your own .openbb routine scripts")
         mt.add_cmd("record", description="start recording current session")

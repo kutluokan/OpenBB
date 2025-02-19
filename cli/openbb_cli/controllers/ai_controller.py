@@ -1,10 +1,15 @@
 """AI Controller Module."""
 
 from typing import List, Optional
+import os
+from pathlib import Path
 import openai
 from anthropic import Anthropic
 from openbb_cli.controllers.base_controller import BaseController
 from openbb_cli.session import Session
+from openbb_cli.config.menu_text import MenuText
+from openbb_cli.config.constants import ENV_FILE_SETTINGS
+from openbb_core.app.constants import OPENBB_DIRECTORY
 
 session = Session()
 
@@ -18,10 +23,29 @@ class AIController(BaseController):
         """Initialize controller."""
         super().__init__(queue)
         
-        if session.settings.AI_PROVIDER == "openai":
-            openai.api_key = session.env.AI_API_KEY
+        # Debug information
+        session.console.print(f"ENV_FILE_SETTINGS path: {ENV_FILE_SETTINGS}")
+        session.console.print(f"OPENBB_DIRECTORY path: {OPENBB_DIRECTORY}")
+        session.console.print(f"Current .env exists: {Path(ENV_FILE_SETTINGS).exists()}")
+        
+        # Get API key directly from environment variables
+        self.api_key = os.getenv("OPENBB_AI_API_KEY") or os.getenv("OPENAI_API_KEY")
+        self.provider = os.getenv("OPENBB_AI_PROVIDER", "openai")
+        
+        session.console.print(f"Found API key: {'Yes' if self.api_key else 'No'}")
+        session.console.print(f"Provider: {self.provider}")
+        
+        if not self.api_key:
+            session.console.print(
+                "[red]Error: AI API key not set. Please set OPENBB_AI_API_KEY in your .env file "
+                "or use an existing OPENAI_API_KEY.[/red]"
+            )
+            return
+            
+        if self.provider == "openai":
+            openai.api_key = self.api_key
         else:
-            self.anthropic = Anthropic(api_key=session.env.AI_API_KEY)
+            self.anthropic = Anthropic(api_key=self.api_key)
             
     def call_analyze(self, other_args: List[str]):
         """Analyze data using AI."""
@@ -33,7 +57,7 @@ class AIController(BaseController):
             
         ns_parser = self.parse_known_args_and_warn(parser, other_args)
         if ns_parser:
-            if session.settings.AI_PROVIDER == "openai":
+            if self.provider == "openai":
                 response = openai.ChatCompletion.create(
                     model="gpt-4",
                     messages=[
@@ -63,7 +87,7 @@ class AIController(BaseController):
             
         ns_parser = self.parse_known_args_and_warn(parser, other_args)
         if ns_parser:
-            if session.settings.AI_PROVIDER == "openai":
+            if self.provider == "openai":
                 response = openai.ChatCompletion.create(
                     model="gpt-4",
                     messages=[
@@ -93,7 +117,7 @@ class AIController(BaseController):
             
         ns_parser = self.parse_known_args_and_warn(parser, other_args)
         if ns_parser:
-            if session.settings.AI_PROVIDER == "openai":
+            if self.provider == "openai":
                 response = openai.ChatCompletion.create(
                     model="gpt-4",
                     messages=[
@@ -123,7 +147,7 @@ class AIController(BaseController):
             
         ns_parser = self.parse_known_args_and_warn(parser, other_args)
         if ns_parser:
-            if session.settings.AI_PROVIDER == "openai":
+            if self.provider == "openai":
                 response = openai.ChatCompletion.create(
                     model="gpt-4",
                     messages=[
@@ -141,4 +165,15 @@ class AIController(BaseController):
                         "content": ns_parser.question
                     }]
                 )
-                session.console.print(response.content[0].text) 
+                session.console.print(response.content[0].text)
+
+    def print_help(self):
+        """Print help."""
+        mt = MenuText("ai/")
+        mt.add_info("AI Assistant Features")
+        mt.add_cmd("analyze", "analyze financial data using AI")
+        mt.add_cmd("explain", "get explanations of financial terms and concepts")
+        mt.add_cmd("suggest", "get investment suggestions based on context")
+        mt.add_cmd("chat", "have a conversation with AI about financial topics")
+        
+        session.console.print(text=mt.menu_text, menu="AI") 

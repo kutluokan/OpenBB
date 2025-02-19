@@ -118,7 +118,9 @@ def bootup():
         session.console.print(e, "\n")
 
     # Add automatic PAT login
-    pat_value = getattr(session.env, 'PAT', None)
+    from openbb_core.env import Env
+    env = Env()
+    pat_value = env._environ.get("OPENBB_PAT")
     if pat_value:
         try:
             obb.account.login(pat=pat_value)
