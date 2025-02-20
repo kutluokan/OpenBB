@@ -2,6 +2,7 @@
 
 from typing import List, Optional, Dict, Tuple
 import os
+import json
 from pathlib import Path
 import re
 from openai import OpenAI
@@ -49,13 +50,8 @@ class AIController(BaseController):
         self.chat_parser = argparse.ArgumentParser(prog='chat', add_help=False)
         self.chat_parser.add_argument("-q", "--question", help="Question to ask", dest="question", required=True)
         
-        self.suggest_parser = argparse.ArgumentParser(prog='suggest', add_help=False)
-        self.suggest_parser.add_argument("-t", "--timeframe", help="Investment timeframe (short/medium/long)", dest="timeframe", choices=["short", "medium", "long"], default="short")
-        self.suggest_parser.add_argument("-r", "--risk", help="Risk level (1-5)", dest="risk", type=int, choices=range(1, 6), default=3)
-        
         self.prepare_parser = argparse.ArgumentParser(prog='prepare', add_help=False)
-        self.prepare_parser.add_argument("-b", "--belief", help="Your market belief or prediction", dest="belief", required=True)
-        self.prepare_parser.add_argument("-c", "--confidence", help="Confidence level (0-100)", dest="confidence", type=int, choices=range(0, 101), default=90)
+        self.prepare_parser.add_argument("-b", "--belief", help="Your market belief", dest="belief", required=True)
         
         # Initialize choices for command completion
         choices = self.choices_default
@@ -65,19 +61,9 @@ class AIController(BaseController):
             "--help": None,
             "-h": "--help",
         }
-        choices["suggest"] = {
-            "--timeframe": {"short": None, "medium": None, "long": None},
-            "-t": "--timeframe",
-            "--risk": {str(i): None for i in range(1, 6)},
-            "-r": "--risk",
-            "--help": None,
-            "-h": "--help",
-        }
         choices["prepare"] = {
             "--belief": None,
             "-b": "--belief",
-            "--confidence": {str(i): None for i in range(0, 101)},
-            "-c": "--confidence",
             "--help": None,
             "-h": "--help",
         }
@@ -244,6 +230,47 @@ class AIController(BaseController):
             session.console.print(f"[red]Error fetching market data: {str(e)}[/red]")
             return None
 
+    def execute_trade_plan(self, trade_plan: Dict) -> bool:
+        """Execute a trade plan.
+        
+        Parameters
+        ----------
+        trade_plan : Dict
+            The trade plan to execute with keys:
+            - action: "buy" or "sell"
+            - symbol: ticker symbol
+            - quantity: number of shares/contracts
+            - type: "stock" or "option"
+            - strike: strike price (for options)
+            - expiry: expiration date (for options)
+            
+        Returns
+        -------
+        bool
+            Whether the trade was executed successfully
+        """
+        try:
+            if trade_plan["type"] == "stock":
+                result = self.trading.place_order(
+                    symbol=trade_plan["symbol"],
+                    qty=trade_plan["quantity"],
+                    side=trade_plan["action"]
+                )
+            else:
+                # For options, we'd need to construct the OCC symbol
+                option_symbol = f"{trade_plan['symbol']}{trade_plan['expiry']}{trade_plan['action'].upper()[0]}{trade_plan['strike']}"
+                result = self.trading.place_order(
+                    symbol=option_symbol,
+                    qty=trade_plan["quantity"],
+                    side=trade_plan["action"]
+                )
+            
+            return not bool(result.get("error"))
+            
+        except Exception as e:
+            session.console.print(f"[red]Error executing trade: {str(e)}[/red]")
+            return False
+
     def call_chat(self, other_args: List[str]):
         """Chat with AI about financial topics and investment strategies."""
         if not other_args:
@@ -358,9 +385,9 @@ class AIController(BaseController):
             return error_msg
 
     def call_prepare(self, other_args: List[str]):
-        """Prepare optimal investment strategy based on user's market belief."""
+        """Prepare and optionally execute optimal trade based on market belief."""
         if not other_args:
-            session.console.print("Usage: prepare -b <belief> -c <confidence_level>")
+            session.console.print("Usage: prepare -b <belief>")
             return
 
         if other_args and not other_args[0].startswith("-"):
@@ -370,72 +397,126 @@ class AIController(BaseController):
             ns_parser = self.prepare_parser.parse_args(other_args)
             
             if self.provider == "openai":
+                # First get the trade plan
                 response = self.client.chat.completions.create(
                     model="chatgpt-4o-latest",
                     messages=[
-                        {"role": "system", "content": """You are an AI investment strategist. 
-                        Analyze the user's market belief and suggest the optimal short-term investment strategy.
-                        Consider various instruments including stocks, options, and crypto.
-                        Provide specific trade suggestions with clear entry/exit points and risk assessment."""},
-                        {"role": "user", "content": f"""Based on this market belief (confidence: {ns_parser.confidence}%):
-                        '{ns_parser.belief}'
+                        {"role": "system", "content": """You are a strategic trade planner.
+                        Based on the user's market belief, respond with a JSON object containing ONE specific trade that would best capitalize on this view:
+                        {
+                            "trade_plan": {
+                                "type": "stock" or "option",
+                                "action": "buy" or "sell",
+                                "symbol": "ticker symbol",
+                                "quantity": number,
+                                "strike": strike price (for options),
+                                "expiry": "YYMMDD" (for options),
+                                "reasoning": "1-2 sentences explaining the trade"
+                            }
+                        }
                         
-                        What's the optimal short-term investment strategy? Consider:
-                        1. Best instruments to trade
-                        2. Specific entry/exit points
-                        3. Risk assessment
-                        4. Potential profit/loss scenarios
-                        5. Alternative strategies"""}
+                        Example 1: For "I think CPI will be very high":
+                        {
+                            "trade_plan": {
+                                "type": "option",
+                                "action": "buy",
+                                "symbol": "TLT",
+                                "quantity": 1,
+                                "strike": 95,
+                                "expiry": "240419",
+                                "reasoning": "Buy TLT puts as bonds will likely sell off on high inflation data. The 95 strike gives good leverage while limiting downside."
+                            }
+                        }
+                        
+                        IMPORTANT: Return ONLY the raw JSON object, no markdown formatting or code blocks."""},
+                        {"role": "user", "content": ns_parser.belief}
                     ]
                 )
-                session.console.print(response.choices[0].message.content)
+                
+                try:
+                    # Clean up the response - remove markdown code blocks if present
+                    content = response.choices[0].message.content
+                    if content.startswith("```"):
+                        content = content.split("```")[1]
+                        if content.startswith("json"):
+                            content = content[4:]
+                    content = content.strip()
+                    
+                    # Parse the AI response as JSON
+                    ai_response = json.loads(content)
+                    trade_plan = ai_response["trade_plan"]
+                    
+                    # Display the trade plan
+                    session.console.print("\n[yellow]Proposed Trade Plan:[/yellow]")
+                    if trade_plan["type"] == "option":
+                        option_type = "puts" if trade_plan["action"] == "buy" else "calls"
+                        session.console.print(
+                            f"[yellow]Buy {trade_plan['quantity']} {trade_plan['symbol']} "
+                            f"${trade_plan['strike']} {option_type} "
+                            f"expiring {trade_plan['expiry']}[/yellow]"
+                        )
+                    else:
+                        session.console.print(
+                            f"[yellow]{trade_plan['action'].upper()} {trade_plan['quantity']} "
+                            f"shares of {trade_plan['symbol']}[/yellow]"
+                        )
+                    session.console.print(f"[yellow]Reasoning: {trade_plan['reasoning']}[/yellow]")
+                    
+                    # Ask for execution confirmation
+                    session.console.print("\n[yellow]Would you like to execute this trade? (y/n)[/yellow]")
+                    response = input().lower().strip()
+                    
+                    if response in ['y', 'yes']:
+                        if self.execute_trade_plan(trade_plan):
+                            session.console.print("[green]Trade executed successfully![/green]")
+                        else:
+                            session.console.print("[red]Failed to execute trade.[/red]")
+                    elif response in ['n', 'no']:
+                        session.console.print("Trade cancelled.")
+                    else:
+                        session.console.print("[red]Invalid response. Trade cancelled.[/red]")
+                    
+                except json.JSONDecodeError:
+                    session.console.print("[red]Error: AI response was not in valid JSON format. Please try again.[/red]")
+                    session.console.print(f"[red]AI response: {response.choices[0].message.content}[/red]")
+                except KeyError as e:
+                    session.console.print(f"[red]Error: Missing required field in trade plan: {str(e)}[/red]")
+                except Exception as e:
+                    session.console.print(f"[red]Error processing trade plan: {str(e)}[/red]")
+            
             else:
+                # Similar implementation for Anthropic
                 response = self.anthropic.messages.create(
                     model="claude-3-opus-20240229",
                     max_tokens=1000,
                     messages=[{
                         "role": "user",
-                        "content": f"""Based on this market belief (confidence: {ns_parser.confidence}%):
-                        '{ns_parser.belief}'
-                        
-                        What's the optimal short-term investment strategy? Consider:
-                        1. Best instruments to trade
-                        2. Specific entry/exit points
-                        3. Risk assessment
-                        4. Potential profit/loss scenarios
-                        5. Alternative strategies"""
+                        "content": f"Based on this belief: '{ns_parser.belief}', what's the single best trade to make? Be very specific and concise (2-3 sentences max)."
                     }]
                 )
                 session.console.print(response.content[0].text)
+                
         except Exception as e:
-            session.console.print(f"Error: {str(e)}")
+            session.console.print(f"[red]Error: {str(e)}[/red]")
 
-    def call_suggest(self, other_args: List[str]):
+    def call_suggest(self, _):
         """Get AI-driven investment suggestions based on market sentiment and trends."""
-        if not other_args:
-            session.console.print("Usage: suggest -t <timeframe> -r <risk_level>")
-            return
-
         try:
-            ns_parser = self.suggest_parser.parse_args(other_args)
-            
             if self.provider == "openai":
                 response = self.client.chat.completions.create(
                     model="chatgpt-4o-latest",
                     messages=[
-                        {"role": "system", "content": """You are an AI investment advisor specializing in trend detection
-                        and sentiment analysis. Analyze market data, news, and social media sentiment to suggest
-                        promising investment opportunities."""},
-                        {"role": "user", "content": f"""Generate investment suggestions for:
-                        Timeframe: {ns_parser.timeframe}
-                        Risk Level: {ns_parser.risk}/5
+                        {"role": "system", "content": """You are a concise investment advisor. 
+                        Provide ONE specific investment suggestion in 2-3 short sentences:
+                        1. What exact trade to make (be specific with strike prices for options)
+                        2. Why this trade makes sense right now
                         
-                        Consider:
-                        1. Current market trends
-                        2. Social media sentiment
-                        3. News impact
-                        4. Technical indicators
-                        5. Risk/reward ratio"""}
+                        Example 1: "Buy AAPL $190 calls expiring next month. Apple's Vision Pro sales are exceeding expectations and the company is expected to announce expanded production."
+                        
+                        Example 2: "Short sell 100 shares of NFLX. Netflix's latest subscriber numbers show concerning trends in key markets and increased competition is hurting margins."
+                        
+                        Keep it brief and actionable. No disclaimers or additional analysis needed."""},
+                        {"role": "user", "content": "What's your top investment suggestion right now?"}
                     ]
                 )
                 session.console.print(response.choices[0].message.content)
@@ -445,16 +526,7 @@ class AIController(BaseController):
                     max_tokens=1000,
                     messages=[{
                         "role": "user",
-                        "content": f"""Generate investment suggestions for:
-                        Timeframe: {ns_parser.timeframe}
-                        Risk Level: {ns_parser.risk}/5
-                        
-                        Consider:
-                        1. Current market trends
-                        2. Social media sentiment
-                        3. News impact
-                        4. Technical indicators
-                        5. Risk/reward ratio"""
+                        "content": "What's your top investment suggestion right now? Be specific and concise (2-3 sentences max)."
                     }]
                 )
                 session.console.print(response.content[0].text)
@@ -466,7 +538,7 @@ class AIController(BaseController):
         mt = MenuText("ai/")
         mt.add_info("AI Assistant Features")
         mt.add_cmd("chat", "discuss financial topics with AI assistant")
-        mt.add_cmd("suggest", "get AI-driven investment suggestions")
-        mt.add_cmd("prepare", "get optimal trade strategy based on your market belief")
+        mt.add_cmd("suggest", "get a quick, specific investment suggestion")
+        mt.add_cmd("prepare", "prepare and execute a trade based on your market view")
         
         session.console.print(text=mt.menu_text, menu="AI") 
