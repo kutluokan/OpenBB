@@ -1,6 +1,6 @@
 """AI Controller Module."""
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Tuple
 import os
 from pathlib import Path
 import re
@@ -8,6 +8,7 @@ from openai import OpenAI
 from anthropic import Anthropic
 from dotenv import load_dotenv
 from openbb_cli.controllers.base_controller import BaseController
+from openbb_cli.controllers.trading_controller import TradingController
 from openbb_cli.session import Session
 from openbb_cli.config.menu_text import MenuText
 from openbb_cli.config.constants import ENV_FILE_SETTINGS
@@ -40,6 +41,9 @@ class AIController(BaseController):
     def __init__(self, queue: Optional[List[str]] = None):
         """Initialize controller."""
         super().__init__(queue)
+        
+        # Initialize trading controller
+        self.trading = TradingController()
         
         # Set up argument parsers for each command
         self.chat_parser = argparse.ArgumentParser(prog='chat', add_help=False)
@@ -95,6 +99,112 @@ class AIController(BaseController):
         else:
             self.anthropic = Anthropic(api_key=self.api_key)
 
+    def parse_trading_command(self, text: str) -> Optional[Tuple[str, str, int]]:
+        """Parse trading command from text.
+        
+        Parameters
+        ----------
+        text : str
+            The text to parse
+            
+        Returns
+        -------
+        Optional[Tuple[str, str, int]]
+            Tuple of (action, symbol, quantity) if trading command found, None otherwise
+        """
+        # Map common company names to their ticker symbols
+        company_to_ticker = {
+            "apple": "AAPL",
+            "microsoft": "MSFT",
+            "google": "GOOGL",
+            "alphabet": "GOOGL",
+            "amazon": "AMZN",
+            "meta": "META",
+            "facebook": "META",
+            "netflix": "NFLX",
+            "tesla": "TSLA",
+            "nvidia": "NVDA",
+            "amd": "AMD",
+            "intel": "INTC"
+        }
+        
+        # Common trading command patterns
+        buy_patterns = [
+            r'(?:buy|purchase|long)\s+(\d+)\s+(?:share(?:s)?\s+(?:of\s+)?)?([A-Za-z]+)(?:\s+share(?:s)?)?',
+            r'(?:buy|purchase|long)\s+([A-Za-z]+)\s+(\d+)\s+share(?:s)?',
+        ]
+        
+        sell_patterns = [
+            r'(?:sell|short)\s+(\d+)\s+(?:share(?:s)?\s+(?:of\s+)?)?([A-Za-z]+)(?:\s+share(?:s)?)?',
+            r'(?:sell|short)\s+([A-Za-z]+)\s+(\d+)\s+share(?:s)?',
+        ]
+        
+        # Try buy patterns
+        for pattern in buy_patterns:
+            match = re.search(pattern, text.lower())
+            if match:
+                groups = match.groups()
+                if len(groups) == 2:
+                    qty, symbol = groups if groups[0].isdigit() else (groups[1], groups[0])
+                    # Clean up the symbol/company name
+                    symbol = symbol.strip().lower()
+                    # Try to map company name to ticker
+                    symbol = company_to_ticker.get(symbol, symbol.upper())
+                    return ("buy", symbol, int(qty))
+        
+        # Try sell patterns
+        for pattern in sell_patterns:
+            match = re.search(pattern, text.lower())
+            if match:
+                groups = match.groups()
+                if len(groups) == 2:
+                    qty, symbol = groups if groups[0].isdigit() else (groups[1], groups[0])
+                    # Clean up the symbol/company name
+                    symbol = symbol.strip().lower()
+                    # Try to map company name to ticker
+                    symbol = company_to_ticker.get(symbol, symbol.upper())
+                    return ("sell", symbol, int(qty))
+        
+        return None
+
+    def handle_trading_command(self, text: str) -> Optional[Dict]:
+        """Handle trading command from chat.
+        
+        Parameters
+        ----------
+        text : str
+            The chat text containing trading command
+            
+        Returns
+        -------
+        Optional[Dict]
+            The order response if trading command executed, None otherwise
+        """
+        trading_command = self.parse_trading_command(text)
+        if trading_command:
+            side, symbol, qty = trading_command
+            
+            # Get current position if selling
+            if side == "sell":
+                position = self.trading.get_position(symbol)
+                if not position:
+                    session.console.print(
+                        f"[red]Error: No position found for {symbol}[/red]"
+                    )
+                    return None
+                
+                current_qty = float(position.get("qty", 0))
+                if current_qty < qty:
+                    session.console.print(
+                        f"[red]Error: Insufficient shares. You only have {current_qty} shares of {symbol}[/red]"
+                    )
+                    return None
+            
+            # Execute the trade
+            return self.trading.place_order(symbol=symbol, qty=qty, side=side)
+        
+        return None
+
     def get_stock_data(self, symbol: str) -> Optional[dict]:
         """Get stock data using OpenBB's functionality."""
         try:
@@ -146,93 +256,96 @@ class AIController(BaseController):
         try:
             ns_parser = self.chat_parser.parse_args(other_args)
             
-            # Check if the question is about stock price or market data
-            stock_patterns = [
-                r'(?:what(?:\'s| is) (?:the )?(?:latest |current )?(?:stock )?price (?:of |for )?|(?:how much is |get |show )(?:the )?(?:stock )?price (?:of |for )?)([A-Za-z\s]+)(?:\s|$|\?|\.)',
-                r'([A-Za-z\s]+?)(?:\s+stock\s+price)',  # matches "apple stock price"
-                r'(?:show|get|check|tell me|what\'s|what is)?\s*([A-Za-z\s]+?)(?:\s+stock)',  # matches "show apple stock"
-                r'price\s+(?:of|for)\s+([A-Za-z\s]+)'  # matches "price of apple"
-            ]
-            market_pattern = r'(?:how is |what\'s |what is |show |tell me about )(?:the )?(?:current )?(?:market|stock market|overall market)'
-            
-            # Try each stock pattern until we find a match
-            stock_match = None
-            matched_company = None
-            for pattern in stock_patterns:
-                match = re.search(pattern, ns_parser.question.lower())
-                if match:
-                    matched_company = match.group(1).strip()
-                    stock_match = match
-                    break
-
-            market_match = re.search(market_pattern, ns_parser.question.lower())
-            
-            response_text = None
-            
-            if stock_match:
-                company = matched_company.lower()
-                # Map common company names to their ticker symbols
-                company_to_ticker = {
-                    "apple": "AAPL",
-                    "microsoft": "MSFT",
-                    "google": "GOOGL",
-                    "alphabet": "GOOGL",
-                    "amazon": "AMZN",
-                    "meta": "META",
-                    "facebook": "META",
-                    "netflix": "NFLX",
-                    "tesla": "TSLA",
-                    "nvidia": "NVDA",
-                    "amd": "AMD",
-                    "intel": "INTC"
-                }
+            # First try direct trading command parsing
+            trading_result = self.handle_trading_command(ns_parser.question)
+            if trading_result:
+                return trading_result
                 
-                symbol = company_to_ticker.get(company, company.upper())
-                quote_data = self.get_stock_data(symbol)
+            # If not a direct trading command, use AI to interpret the request
+            if self.provider == "openai":
+                # First, ask AI to interpret if this is a trading request
+                response = self.client.chat.completions.create(
+                    model="chatgpt-4o-latest",
+                    messages=[
+                        {"role": "system", "content": """You are a trading assistant that helps convert natural language requests into trading actions.
+                        If the user's request implies a trading action, respond with a JSON object containing:
+                        {
+                            "is_trade": true,
+                            "action": "buy" or "sell",
+                            "symbol": "the ticker symbol",
+                            "quantity": number of shares,
+                            "reason": "brief explanation of interpretation"
+                        }
+                        
+                        If it's not a trading request, respond with:
+                        {
+                            "is_trade": false
+                        }
+                        
+                        Examples of trading requests:
+                        - "I want to invest $1000 in Apple"
+                        - "Help me buy some Tesla stock"
+                        - "I think Microsoft is going down, I should get out"
+                        - "Get rid of my Amazon position"
+                        
+                        For quantity, if not specified:
+                        - For buy: suggest 1 share
+                        - For sell: suggest selling entire position
+                        
+                        Only respond with the JSON object, nothing else."""},
+                        {"role": "user", "content": ns_parser.question}
+                    ]
+                )
                 
-                if quote_data:
-                    response_text = f"${quote_data.get('price', quote_data.get('last_price', 0)):.2f}"
-                else:
-                    response_text = f"Unable to fetch stock data for {company.title()} ({symbol}) at this time."
-            
-            elif market_match:
-                market_data = self.get_market_data()
-                if market_data:
-                    # Format market data response based on available fields
-                    response_text = "Current Market Overview:\n"
-                    for field, value in market_data.items():
-                        if value is not None:
-                            description = field.replace('_', ' ').title()
-                            response_text += f"- {description}: {value}\n"
-                else:
-                    response_text = "Unable to fetch market data at this time."
-            
-            # If not a stock/market question or if data fetch failed, proceed with normal chat
-            if response_text is None:
-                if self.provider == "openai":
-                    response = self.client.chat.completions.create(
-                        model="chatgpt-4o-latest",
-                        messages=[
-                            {"role": "system", "content": """You are a sophisticated financial assistant with expertise in:
-                            1. Market analysis and trading strategies
-                            2. Risk management and portfolio optimization
-                            3. Technical and fundamental analysis
-                            4. Current market trends and news impact
-                            Provide clear, actionable advice while being mindful of risks."""},
-                            {"role": "user", "content": ns_parser.question}
-                        ]
-                    )
-                    response_text = response.choices[0].message.content
-                else:
-                    response = self.anthropic.messages.create(
-                        model="claude-3-opus-20240229",
-                        max_tokens=1000,
-                        messages=[{
-                            "role": "user",
-                            "content": ns_parser.question
-                        }]
-                    )
-                    response_text = response.content[0].text
+                try:
+                    ai_response = eval(response.choices[0].message.content)
+                    if isinstance(ai_response, dict) and ai_response.get("is_trade"):
+                        # Execute the trade
+                        trade_result = self.trading.place_order(
+                            symbol=ai_response["symbol"],
+                            qty=ai_response["quantity"],
+                            side=ai_response["action"]
+                        )
+                        
+                        if trade_result and not trade_result.get("error"):
+                            session.console.print(f"\n[green]Trade executed based on your request:[/green]")
+                            session.console.print(f"[green]Reason: {ai_response['reason']}[/green]")
+                        return trade_result
+                except:
+                    pass  # If AI response isn't valid JSON, proceed with normal chat
+                
+            # If not a trading request or using Anthropic, proceed with normal chat
+            if self.provider == "openai":
+                response = self.client.chat.completions.create(
+                    model="chatgpt-4o-latest",
+                    messages=[
+                        {"role": "system", "content": """You are a sophisticated financial assistant with expertise in:
+                        1. Market analysis and trading strategies
+                        2. Risk management and portfolio optimization
+                        3. Technical and fundamental analysis
+                        4. Current market trends and news impact
+                        
+                        If the user wants to make trades, explain that they can use natural language commands like:
+                        - "Buy 2 shares of Apple"
+                        - "I want to invest in Tesla"
+                        - "Sell my Microsoft shares"
+                        - "Get out of my Amazon position"
+                        
+                        Otherwise, provide clear, actionable advice while being mindful of risks."""},
+                        {"role": "user", "content": ns_parser.question}
+                    ]
+                )
+                response_text = response.choices[0].message.content
+            else:
+                response = self.anthropic.messages.create(
+                    model="claude-3-opus-20240229",
+                    max_tokens=1000,
+                    messages=[{
+                        "role": "user",
+                        "content": ns_parser.question
+                    }]
+                )
+                response_text = response.content[0].text
 
             # Print and return the response
             if response_text:

@@ -1,5 +1,6 @@
 /equity/price/quote --symbol aapl
 /ai/chat -q "What is the price of apple?"
+/ai/chat -q "buy 1 apple share"
 
 FwitIT  PRD
 

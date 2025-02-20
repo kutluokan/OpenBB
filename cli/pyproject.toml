@@ -17,6 +17,7 @@ openbb = 'openbb_cli.cli:main'
 python = "^3.9,<3.13"
 openai = "^1.12.0"
 anthropic = "^0.18.1"
+requests = "^2.31.0"
 
 # OpenBB dependencies
 openbb = { version = "^4.4.0", extras = ["all"] }
