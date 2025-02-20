@@ -147,30 +147,53 @@ class AIController(BaseController):
             ns_parser = self.chat_parser.parse_args(other_args)
             
             # Check if the question is about stock price or market data
-            stock_pattern = r'(?:what(?:\'s| is) (?:the )?(?:latest |current )?(?:stock )?price (?:of |for )?|(?:how much is |get |show )(?:the )?(?:stock )?price (?:of |for )?)([A-Za-z]+)(?:\s|$|\?|\.)'
+            stock_patterns = [
+                r'(?:what(?:\'s| is) (?:the )?(?:latest |current )?(?:stock )?price (?:of |for )?|(?:how much is |get |show )(?:the )?(?:stock )?price (?:of |for )?)([A-Za-z\s]+)(?:\s|$|\?|\.)',
+                r'([A-Za-z\s]+?)(?:\s+stock\s+price)',  # matches "apple stock price"
+                r'(?:show|get|check|tell me|what\'s|what is)?\s*([A-Za-z\s]+?)(?:\s+stock)',  # matches "show apple stock"
+                r'price\s+(?:of|for)\s+([A-Za-z\s]+)'  # matches "price of apple"
+            ]
             market_pattern = r'(?:how is |what\'s |what is |show |tell me about )(?:the )?(?:current )?(?:market|stock market|overall market)'
             
-            stock_match = re.search(stock_pattern, ns_parser.question.lower())
+            # Try each stock pattern until we find a match
+            stock_match = None
+            matched_company = None
+            for pattern in stock_patterns:
+                match = re.search(pattern, ns_parser.question.lower())
+                if match:
+                    matched_company = match.group(1).strip()
+                    stock_match = match
+                    break
+
             market_match = re.search(market_pattern, ns_parser.question.lower())
             
             response_text = None
             
             if stock_match:
-                symbol = stock_match.group(1).upper()
+                company = matched_company.lower()
+                # Map common company names to their ticker symbols
+                company_to_ticker = {
+                    "apple": "AAPL",
+                    "microsoft": "MSFT",
+                    "google": "GOOGL",
+                    "alphabet": "GOOGL",
+                    "amazon": "AMZN",
+                    "meta": "META",
+                    "facebook": "META",
+                    "netflix": "NFLX",
+                    "tesla": "TSLA",
+                    "nvidia": "NVDA",
+                    "amd": "AMD",
+                    "intel": "INTC"
+                }
+                
+                symbol = company_to_ticker.get(company, company.upper())
                 quote_data = self.get_stock_data(symbol)
                 
                 if quote_data:
-                    response_text = f"The latest price for {symbol} is ${quote_data.get('price', quote_data.get('last_price', 0)):.2f}. "
-                    if 'bid' in quote_data and 'ask' in quote_data:
-                        response_text += f"Current bid: ${quote_data['bid']:.2f}, ask: ${quote_data['ask']:.2f}. "
-                    if 'volume' in quote_data:
-                        response_text += f"Today's volume: {quote_data['volume']:,}."
-                    if 'change_percentage' in quote_data:
-                        response_text += f" Change: {quote_data['change_percentage']:.2f}%"
-                    elif 'change_percent' in quote_data:
-                        response_text += f" Change: {quote_data['change_percent']:.2f}%"
+                    response_text = f"${quote_data.get('price', quote_data.get('last_price', 0)):.2f}"
                 else:
-                    response_text = "Unable to fetch stock data at this time."
+                    response_text = f"Unable to fetch stock data for {company.title()} ({symbol}) at this time."
             
             elif market_match:
                 market_data = self.get_market_data()
