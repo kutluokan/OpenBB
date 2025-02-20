@@ -1,3 +1,6 @@
+/equity/price/quote --symbol aapl
+/ai/chat -q "What is the price of AAPL?"
+
 FwitIT  PRD
 
 1. Overview  

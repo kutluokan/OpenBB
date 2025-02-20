@@ -3,6 +3,7 @@
 from typing import List, Optional
 import os
 from pathlib import Path
+import re
 from openai import OpenAI
 from anthropic import Anthropic
 from dotenv import load_dotenv
@@ -11,6 +12,7 @@ from openbb_cli.session import Session
 from openbb_cli.config.menu_text import MenuText
 from openbb_cli.config.constants import ENV_FILE_SETTINGS
 from openbb_core.app.constants import OPENBB_DIRECTORY
+from openbb import obb
 import argparse
 
 session = Session()
@@ -92,7 +94,134 @@ class AIController(BaseController):
             self.client = OpenAI(api_key=self.api_key)
         else:
             self.anthropic = Anthropic(api_key=self.api_key)
+
+    def get_stock_data(self, symbol: str) -> Optional[dict]:
+        """Get stock data using OpenBB's functionality."""
+        try:
+            # Use OpenBB's equity quote functionality with the same approach as /equity/price/quote
+            session.console.print(f"Fetching quote data for {symbol}...")
+            quote_data = obb.equity.price.quote(symbol=symbol)
             
+            if quote_data is None:
+                session.console.print("[red]No quote data received[/red]")
+                return None
+                
+            if quote_data.results is None:
+                session.console.print("[red]No results in quote data[/red]")
+                return None
+                
+            # Handle both list and single object responses
+            if isinstance(quote_data.results, list):
+                if not quote_data.results:  # Empty list
+                    session.console.print("[red]Empty results list[/red]")
+                    return None
+                # Take the first result if it's a list
+                data = quote_data.results[0].model_dump()
+            else:
+                # Handle single object response
+                data = quote_data.results.model_dump()
+                
+            session.console.print(f"Successfully fetched data: {data}")
+            return data
+            
+        except Exception as e:
+            session.console.print(f"[red]Error fetching stock data: {str(e)}[/red]")
+            return None
+
+    def get_market_data(self) -> Optional[dict]:
+        """Get market overview data using OpenBB's functionality."""
+        try:
+            # Use OpenBB's market overview functionality with yfinance provider
+            market_data = obb.market.overview(provider="yfinance", use_cache=False)
+            if market_data and market_data.results is not None:
+                return market_data.results.model_dump()
+            return None
+        except TimeoutError:
+            session.console.print("[red]Error: Request timed out while fetching market data. Please try again.[/red]")
+            return None
+        except Exception as e:
+            session.console.print(f"[red]Error fetching market data: {str(e)}[/red]")
+            return None
+
+    def call_chat(self, other_args: List[str]):
+        """Chat with AI about financial topics and investment strategies."""
+        if not other_args:
+            return "Usage: chat -q <question>"
+
+        if other_args and not other_args[0].startswith("-"):
+            other_args.insert(0, "--question")
+            
+        try:
+            ns_parser = self.chat_parser.parse_args(other_args)
+            
+            # Check if the question is about stock price or market data
+            stock_pattern = r'(?:what(?:\'s| is) (?:the )?(?:latest |current )?(?:stock )?price (?:of |for )?|(?:how much is |get |show )(?:the )?(?:stock )?price (?:of |for )?)([A-Za-z]+)(?:\s|$|\?|\.)'
+            market_pattern = r'(?:how is |what\'s |what is |show |tell me about )(?:the )?(?:current )?(?:market|stock market|overall market)'
+            
+            stock_match = re.search(stock_pattern, ns_parser.question.lower())
+            market_match = re.search(market_pattern, ns_parser.question.lower())
+            
+            if stock_match:
+                symbol = stock_match.group(1).upper()
+                session.console.print(f"Detected stock price query for {symbol}")
+                quote_data = self.get_stock_data(symbol)
+                
+                if quote_data:
+                    response_text = f"The latest price for {symbol} is ${quote_data.get('price', quote_data.get('last_price', 0)):.2f}. "
+                    if 'bid' in quote_data and 'ask' in quote_data:
+                        response_text += f"Current bid: ${quote_data['bid']:.2f}, ask: ${quote_data['ask']:.2f}. "
+                    if 'volume' in quote_data:
+                        response_text += f"Today's volume: {quote_data['volume']:,}."
+                    if 'change_percentage' in quote_data:
+                        response_text += f" Change: {quote_data['change_percentage']:.2f}%"
+                    elif 'change_percent' in quote_data:
+                        response_text += f" Change: {quote_data['change_percent']:.2f}%"
+                    
+                    session.console.print(f"Generated response: {response_text}")
+                    return response_text
+                return "Unable to fetch stock data at this time."
+            
+            elif market_match:
+                market_data = self.get_market_data()
+                if market_data:
+                    # Format market data response based on available fields
+                    response_text = "Current Market Overview:\n"
+                    for field, value in market_data.items():
+                        if value is not None:
+                            description = field.replace('_', ' ').title()
+                            response_text += f"- {description}: {value}\n"
+                    
+                    return response_text
+                return "Unable to fetch market data at this time."
+            
+            # If not a stock/market question or if data fetch failed, proceed with normal chat
+            if self.provider == "openai":
+                response = self.client.chat.completions.create(
+                    model="chatgpt-4o-latest",
+                    messages=[
+                        {"role": "system", "content": """You are a sophisticated financial assistant with expertise in:
+                        1. Market analysis and trading strategies
+                        2. Risk management and portfolio optimization
+                        3. Technical and fundamental analysis
+                        4. Current market trends and news impact
+                        Provide clear, actionable advice while being mindful of risks."""},
+                        {"role": "user", "content": ns_parser.question}
+                    ]
+                )
+                return response.choices[0].message.content
+            else:
+                response = self.anthropic.messages.create(
+                    model="claude-3-opus-20240229",
+                    max_tokens=1000,
+                    messages=[{
+                        "role": "user",
+                        "content": ns_parser.question
+                    }]
+                )
+                return response.content[0].text
+        except Exception as e:
+            return f"Error: {str(e)}"
+
     def call_prepare(self, other_args: List[str]):
         """Prepare optimal investment strategy based on user's market belief."""
         if not other_args:
@@ -191,45 +320,6 @@ class AIController(BaseController):
                         3. News impact
                         4. Technical indicators
                         5. Risk/reward ratio"""
-                    }]
-                )
-                session.console.print(response.content[0].text)
-        except Exception as e:
-            session.console.print(f"Error: {str(e)}")
-
-    def call_chat(self, other_args: List[str]):
-        """Chat with AI about financial topics and investment strategies."""
-        if not other_args:
-            session.console.print("Usage: chat -q <question>")
-            return
-
-        if other_args and not other_args[0].startswith("-"):
-            other_args.insert(0, "--question")
-            
-        try:
-            ns_parser = self.chat_parser.parse_args(other_args)
-            
-            if self.provider == "openai":
-                response = self.client.chat.completions.create(
-                    model="chatgpt-4o-latest",
-                    messages=[
-                        {"role": "system", "content": """You are a sophisticated financial assistant with expertise in:
-                        1. Market analysis and trading strategies
-                        2. Risk management and portfolio optimization
-                        3. Technical and fundamental analysis
-                        4. Current market trends and news impact
-                        Provide clear, actionable advice while being mindful of risks."""},
-                        {"role": "user", "content": ns_parser.question}
-                    ]
-                )
-                session.console.print(response.choices[0].message.content)
-            else:
-                response = self.anthropic.messages.create(
-                    model="claude-3-opus-20240229",
-                    max_tokens=1000,
-                    messages=[{
-                        "role": "user",
-                        "content": ns_parser.question
                     }]
                 )
                 session.console.print(response.content[0].text)
